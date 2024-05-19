@@ -23,7 +23,6 @@ ENV OUTPUT_SERVER="acarshub" \
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 COPY iridium-toolkit.patch /tmp/iridium-toolkit.patch
-COPY iridium-extractor.patch /tmp/iridium-extractor.patch
 
 # hadolint ignore=DL3008,SC2086,DL4006,SC2039
 RUN set -x && \
@@ -91,9 +90,8 @@ RUN set -x && \
     git apply /tmp/iridium-toolkit.patch && \
     popd && \
     # install gr-iridium
-    git clone https://github.com/muccc/gr-iridium.git /src/gr-iridium && \
+    git clone https://github.com/76rhodan/gr-iridium /src/gr-iridium && \
     pushd /src/gr-iridium && \
-    git apply /tmp/iridium-extractor.patch && \
     cmake -B build && \
     cmake --build build -j`nproc` && \
     cmake --install build && \
