@@ -23,6 +23,7 @@ ENV OUTPUT_SERVER="acarshub" \
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 COPY iridium-toolkit.patch /tmp/iridium-toolkit.patch
+COPY iridium.py /tmp/iridium.py
 
 # hadolint ignore=DL3008,SC2086,DL4006,SC2039
 RUN set -x && \
@@ -44,6 +45,9 @@ RUN set -x && \
     KEPT_PACKAGES+=(gnuradio) && \
     KEPT_PACKAGES+=(gr-osmosdr) && \
     KEPT_PACKAGES+=(libsndfile1) && \
+    KEPT_PACKAGES+=(collectd) && \
+    KEPT_PACKAGES+=(nginx) && \
+    KEPT_PACKAGES+=(php-fpm) && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
     "${KEPT_PACKAGES[@]}" \
@@ -97,6 +101,8 @@ RUN set -x && \
     cmake --install build && \
     ldconfig && \
     popd && \
+    # install stats
+    cp /tmp/iridium.py /usr/lib/collectd/iridium.py && \
     # Clean up
     apt-get remove -y "${TEMP_PACKAGES[@]}" && \
     apt-get autoremove -y && \
