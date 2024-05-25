@@ -1,12 +1,13 @@
 import collectd
 import socket
 import threading
+import time
 
 # Define the UDP address and port to listen on
 UDP_IP = "0.0.0.0"  # Listen on all available network interfaces
 UDP_PORT = 5005     # Choose a port number to listen on
 
-stop_flag = threading.Event()  # work around for hanging collectd
+stop_flag = threading.Event()  # Workaround for hanging collectd
 
 # Mapping iridium-extractor output > human readable
 custom_names = {
@@ -21,11 +22,11 @@ custom_names = {
     'okt': 'Total OK frames',
     'okt_avg': 'Average OK frames',
     'd': 'Dropped bursts',
-
 }
 
 sock = None
-read_thread = None
+buffer = []
+last_update_timestamp = 0
 
 def parse_udp_data(data):
     """
@@ -46,21 +47,33 @@ def parse_udp_data(data):
 
 def read_udp_data():
     """
-    Read UDP data and parse metrics.
+    Read UDP data and store metrics in buffer.
     """
     global sock
-    try:
-        if sock is None:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.bind((UDP_IP, UDP_PORT))
-            sock.settimeout(1.0)  # Set a timeout of 1 second - just to be sure
+    if sock is None:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind((UDP_IP, UDP_PORT))
+        sock.settimeout(1.0)  # Set a timeout of 1 second
 
-        while not stop_flag.is_set():
-            try:
-                data, addr = sock.recvfrom(1024)
-                metrics = parse_udp_data(data)
-                # Send metrics to Collectd
-                for key, value in metrics.items():
+    while not stop_flag.is_set():
+        try:
+            data, addr = sock.recvfrom(1024)
+            metrics = parse_udp_data(data)
+            buffer.append(metrics)
+        except socket.timeout:
+            continue  # Timeout reached, loop will check stop_flag and continue
+
+def read_callback():
+    """
+    Collectd read callback to dispatch metrics.
+    """
+    global buffer, last_update_timestamp
+    if buffer:
+        metrics = buffer.pop(0)
+        current_timestamp = int(metrics.get('timestamp', time.time()))  # Use timestamp from data or current time
+        if last_update_timestamp != current_timestamp:
+            for key, value in metrics.items():
+                if key != 'timestamp':  # Skip timestamp key
                     val = collectd.Values(plugin="iridium")
                     val.plugin_instance = custom_names.get(key, key)
                     val.type_instance = custom_names.get(key, key)
@@ -73,26 +86,10 @@ def read_udp_data():
                     elif key in {"okt", "d"}:
                         val.type = "counter"
                     else:
-                        # Default type (gauge) for unknown metrics - not sure if that a good default
+                        # Default type (gauge) for unknown metrics
                         val.type = "gauge"
                     val.dispatch()
-            except socket.timeout:
-                continue  # Timeout reached, loop will check stop_flag and continue
-    except Exception as e:
-        collectd.error("Error reading UDP data: {}".format(str(e)))
-    finally:
-        if sock:
-            sock.close()
-            sock = None
-            collectd.info("Socket closed.")
-
-def udp_reader_thread():
-    """
-    Thread function to read UDP data.
-    """
-    collectd.info("UDP reader thread started.")
-    read_udp_data()
-    collectd.info("UDP reader thread stopped.")
+            last_update_timestamp = current_timestamp
 
 def init_callback():
     """
@@ -100,7 +97,7 @@ def init_callback():
     """
     global read_thread
     collectd.info("Initializing UDP data read plugin.")
-    read_thread = threading.Thread(target=udp_reader_thread)
+    read_thread = threading.Thread(target=read_udp_data)
     read_thread.start()
 
 def shutdown_callback():
@@ -108,11 +105,12 @@ def shutdown_callback():
     Shutdown callback function for Collectd.
     """
     collectd.info("Shutdown signal received, setting stop flag.")
-    stop_flag.set()  # Signal the read loop to stop - hanging collected workaround
+    stop_flag.set()  # Signal the read loop to stop
     if read_thread:
-        read_thread.join()  # Wait for the read thread to exit - still workaround
+        read_thread.join()  # Wait for the read thread to exit
     collectd.info("Shutdown complete.")
 
 # Register callbacks
 collectd.register_init(init_callback)
+collectd.register_read(read_callback)
 collectd.register_shutdown(shutdown_callback)

@@ -45,6 +45,7 @@ RUN set -x && \
     KEPT_PACKAGES+=(gr-osmosdr) && \
     KEPT_PACKAGES+=(libsndfile1) && \
     KEPT_PACKAGES+=(collectd) && \
+    KEPT_PACKAGES+=(rrdtool) && \
     KEPT_PACKAGES+=(nginx) && \
     KEPT_PACKAGES+=(php-fpm) && \
     apt-get update && \
@@ -84,11 +85,11 @@ RUN set -x && \
     popd && \
     ldconfig && \
     # install pip dependencies
-    pypy3 -m pip install --force-reinstall --break-system-packages crcmod zmq && \
+    pypy3 -m pip install --force-reinstall --break-system-packages crcmod zmq sockets thread6 collectd && \
     # install iridium-toolkit
     git clone https://github.com/muccc/iridium-toolkit.git /opt/iridium-toolkit && \
     pushd /opt/iridium-toolkit && \
-    mv html/map.html html/index.html && \
+#    mv html/map.html html/index.html && \
     rm html/example.sh && \
     git apply /tmp/iridium-toolkit.patch && \
     popd && \
